@@ -1,0 +1,217 @@
+@import url('https://fonts.googleapis.com/css2?family=Merriweather:wght@400;700;900&family=Source+Sans+3:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* UFC Institutional Blue Theme */
+    --background: 210 20% 98%;
+    --foreground: 215 25% 15%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 215 25% 15%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 215 25% 15%;
+
+    /* Primary - UFC Blue */
+    --primary: 215 70% 35%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Secondary - Light Blue */
+    --secondary: 210 40% 94%;
+    --secondary-foreground: 215 70% 35%;
+
+    /* Muted */
+    --muted: 210 20% 96%;
+    --muted-foreground: 215 15% 45%;
+
+    /* Accent - Gold/Amber */
+    --accent: 38 92% 50%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 214 20% 88%;
+    --input: 214 20% 88%;
+    --ring: 215 70% 35%;
+
+    --radius: 0.5rem;
+
+    /* Custom Colors */
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+    --info: 199 89% 48%;
+    --info-foreground: 0 0% 100%;
+
+    /* Category Colors */
+    --category-eventos: 262 83% 58%;
+    --category-oportunidades: 142 71% 45%;
+    --category-pesquisa: 199 89% 48%;
+    --category-projetos: 25 95% 53%;
+    --category-avisos: 38 92% 50%;
+    --category-outros: 215 15% 45%;
+
+    /* Reaction Colors */
+    --reaction-curtida: 215 70% 50%;
+    --reaction-amei: 0 84% 60%;
+    --reaction-triste: 215 15% 50%;
+    --reaction-surpreso: 38 92% 50%;
+    --reaction-parabens: 142 71% 45%;
+
+    /* Sidebar */
+    --sidebar-background: 215 25% 15%;
+    --sidebar-foreground: 210 20% 98%;
+    --sidebar-primary: 38 92% 50%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 215 30% 25%;
+    --sidebar-accent-foreground: 210 20% 98%;
+    --sidebar-border: 215 20% 25%;
+    --sidebar-ring: 38 92% 50%;
+
+    /* Gradients */
+    --gradient-hero: linear-gradient(135deg, hsl(215 70% 35%) 0%, hsl(215 60% 25%) 100%);
+    --gradient-accent: linear-gradient(135deg, hsl(38 92% 50%) 0%, hsl(25 95% 53%) 100%);
+    --gradient-card-hover: linear-gradient(180deg, transparent 0%, hsl(215 70% 35% / 0.03) 100%);
+  }
+
+  .dark {
+    --background: 215 25% 10%;
+    --foreground: 210 20% 98%;
+
+    --card: 215 25% 13%;
+    --card-foreground: 210 20% 98%;
+
+    --popover: 215 25% 13%;
+    --popover-foreground: 210 20% 98%;
+
+    --primary: 210 60% 55%;
+    --primary-foreground: 215 25% 10%;
+
+    --secondary: 215 25% 18%;
+    --secondary-foreground: 210 20% 98%;
+
+    --muted: 215 25% 18%;
+    --muted-foreground: 215 15% 65%;
+
+    --accent: 38 92% 55%;
+    --accent-foreground: 215 25% 10%;
+
+    --destructive: 0 62% 50%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 215 20% 22%;
+    --input: 215 20% 22%;
+    --ring: 210 60% 55%;
+
+    --sidebar-background: 215 30% 8%;
+    --sidebar-foreground: 210 20% 98%;
+    --sidebar-primary: 38 92% 55%;
+    --sidebar-primary-foreground: 215 25% 10%;
+    --sidebar-accent: 215 25% 15%;
+    --sidebar-accent-foreground: 210 20% 98%;
+    --sidebar-border: 215 20% 18%;
+    --sidebar-ring: 38 92% 55%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    @apply font-serif font-bold tracking-tight;
+  }
+}
+
+@layer utilities {
+  .font-serif {
+    font-family: 'Merriweather', Georgia, serif;
+  }
+
+  .font-sans {
+    font-family: 'Source Sans 3', system-ui, sans-serif;
+  }
+
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .gradient-hero {
+    background: var(--gradient-hero);
+  }
+
+  .gradient-accent {
+    background: var(--gradient-accent);
+  }
+
+  .line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .line-clamp-3 {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+}
+
+/* Category Badge Colors */
+.category-eventos {
+  @apply bg-purple-500/10 text-purple-600 border-purple-200;
+}
+
+.category-oportunidades {
+  @apply bg-emerald-500/10 text-emerald-600 border-emerald-200;
+}
+
+.category-pesquisa {
+  @apply bg-sky-500/10 text-sky-600 border-sky-200;
+}
+
+.category-projetos {
+  @apply bg-orange-500/10 text-orange-600 border-orange-200;
+}
+
+.category-avisos {
+  @apply bg-amber-500/10 text-amber-600 border-amber-200;
+}
+
+.category-outros {
+  @apply bg-slate-500/10 text-slate-600 border-slate-200;
+}
+
+/* Reaction Buttons */
+.reaction-btn {
+  @apply transition-all duration-200 hover:scale-110 active:scale-95;
+}
+
+/* Special style for TRISTE reaction: only eyes and mouth should be white when active (button filled) */
+.reaction-btn[data-tipo="TRISTE"].bg-muted svg path,
+.reaction-btn[data-tipo="TRISTE"].bg-muted svg line {
+  stroke: rgb(255 255 255);
+}
+
+/* Ensure circle outline (face) keeps stroke color (not forced white) */
+.reaction-btn[data-tipo="TRISTE"].bg-muted svg circle {
+  stroke: currentColor;
+}
