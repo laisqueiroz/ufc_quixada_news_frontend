@@ -1,0 +1,31 @@
+<!doctype html>
+<html>
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Not Found</title>
+    <script>
+        // Static-host fallback for SPA (GitHub Pages, static Apache/Nginx without rewrite):
+        // Redirect to the SPA entry with the current path encoded in the hash so the client router can handle it.
+        (function () {
+            try {
+                var path = location.pathname + location.search + location.hash;
+                // Avoid redirect loop if index is actually served here
+                if (path && path !== '/' && !location.href.includes('/#')) {
+                    var target = '/#' + path;
+                    // Use replace so the 404 page isn't kept in history
+                    location.replace(target);
+                }
+            } catch (e) {
+                /* ignore */
+            }
+        })();
+    </script>
+</head>
+
+<body>
+    <p>Redirecting… If you are not redirected, <a id="link" href="/">go to home</a>.</p>
+</body>
+
+</html>
