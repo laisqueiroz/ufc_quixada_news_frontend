@@ -18,7 +18,7 @@ const fs = require('fs')
         process.exit(1)
     }
 
-    const apiBase = process.env.API_BASE || 'http://localhost:8080'
+    const apiBase = process.env.VITE_API_URL || 'http://localhost:8080'
 
     // register a new bolsista user
     const timestamp = Date.now()
