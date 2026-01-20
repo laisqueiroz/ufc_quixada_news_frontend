@@ -34,6 +34,9 @@ const App = () => (
 
             {/* Auth Routes */}
             <Route path="/auth" element={<AuthPage />} />
+            <Route path="/auth/forgot" element={<AuthPage />} />
+            <Route path="/auth/verify" element={<AuthPage />} />
+            <Route path="/auth/reset" element={<AuthPage />} />
 
             {/* Dashboard Routes */}
             <Route path="/dashboard" element={<DashboardLayout />}>

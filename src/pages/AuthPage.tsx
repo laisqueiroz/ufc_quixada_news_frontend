@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate, useSearchParams, Link } from 'react-router-dom'
+import { useNavigate, useSearchParams, Link, useLocation } from 'react-router-dom'
 import { Eye, EyeOff, ArrowLeft, Loader2 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { api, ApiError } from '@/lib/api'
@@ -17,7 +17,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useToast } from '@/hooks/use-toast'
 
-type AuthTab = 'login' | 'register' | 'forgot' | 'reset'
+type AuthTab = 'login' | 'register' | 'forgot' | 'verify' | 'reset'
 
 export default function AuthPage() {
     const [searchParams] = useSearchParams()
@@ -39,18 +39,31 @@ export default function AuthPage() {
         perfil: '' as 'estudante' | 'docente' | 'servidor' | 'bolsista' | 'visitante' | '',
     })
     const [forgotForm, setForgotForm] = useState({ email: '' })
+    const [verifyForm, setVerifyForm] = useState({ token: '' })
     const [resetForm, setResetForm] = useState({ token: '', senha: '', confirmarSenha: '' })
+
+    const location = useLocation()
 
     useEffect(() => {
         const tab = searchParams.get('tab')
         const token = searchParams.get('token')
+
+        // Deep-link via query param remains supported
         if (tab === 'register') setActiveTab('register')
         if (tab === 'forgot') setActiveTab('forgot')
+        if (tab === 'verify') setActiveTab('verify')
+
+        // Route-based tab selection
+        if (location.pathname.endsWith('/forgot')) setActiveTab('forgot')
+        else if (location.pathname.endsWith('/verify')) setActiveTab('verify')
+        else if (location.pathname.endsWith('/reset')) setActiveTab('reset')
+
+        // Pre-fill token from query when present
         if (token) {
             setActiveTab('reset')
             setResetForm((prev) => ({ ...prev, token }))
         }
-    }, [searchParams])
+    }, [searchParams, location.pathname])
 
     useEffect(() => {
         if (isAuthenticated) {
@@ -147,20 +160,38 @@ export default function AuthPage() {
                     'Se este e-mail estiver cadastrado, você receberá instruções para redefinir sua senha.',
             })
             setForgotForm({ email: '' })
+            // After sending, guide user to the verification step
+            navigate('/auth/verify')
         } catch (error) {
             toast({
                 title: 'E-mail enviado!',
                 description: 'Se este e-mail estiver cadastrado, você receberá instruções.',
             })
+            navigate('/auth/verify')
         } finally {
             setIsLoading(false)
         }
     }
 
+    const handleVerifyCode = (e: React.FormEvent) => {
+        e.preventDefault()
+        if (!verifyForm.token) {
+            toast({ title: 'Informe o código recebido', variant: 'destructive' })
+            return
+        }
+        // Carry token to reset step (both state and URL)
+        setResetForm((prev) => ({ ...prev, token: verifyForm.token }))
+        navigate(`/auth/reset?token=${encodeURIComponent(verifyForm.token)}`)
+    }
+
     const handleResetPassword = async (e: React.FormEvent) => {
         e.preventDefault()
-        if (!resetForm.token || !resetForm.senha) {
-            toast({ title: 'Preencha todos os campos', variant: 'destructive' })
+        // Ensure token is present from verify step or URL
+        const tokenFromUrl = searchParams.get('token')
+        const token = resetForm.token || tokenFromUrl || ''
+
+        if (!token || !resetForm.senha) {
+            toast({ title: 'Código ausente. Volte e verifique o código.', variant: 'destructive' })
             return
         }
 
@@ -176,7 +207,7 @@ export default function AuthPage() {
 
         setIsLoading(true)
         try {
-            await api.resetPassword(resetForm.token, resetForm.senha)
+            await api.resetPassword(token, resetForm.senha)
             toast({ title: 'Senha redefinida com sucesso!' })
             setActiveTab('login')
         } catch (error) {
@@ -433,27 +464,48 @@ export default function AuthPage() {
                                 </form>
                             </TabsContent>
 
+                            {/* Verify Code Tab */}
+                            <TabsContent value="verify" className="mt-0">
+                                <CardTitle className="text-lg mb-2">Verificar Código</CardTitle>
+                                <CardDescription className="mb-4">
+                                    Digite o código recebido por e-mail para continuar.
+                                </CardDescription>
+                                <form onSubmit={handleVerifyCode} className="space-y-4">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="verify-token">Código</Label>
+                                        <Input
+                                            id="verify-token"
+                                            placeholder="Cole o código recebido"
+                                            value={verifyForm.token}
+                                            onChange={(e) =>
+                                                setVerifyForm({ token: e.target.value })
+                                            }
+                                        />
+                                    </div>
+                                    <Button type="submit" className="w-full" disabled={isLoading}>
+                                        {isLoading && (
+                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                        )}
+                                        Continuar
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        className="w-full"
+                                        onClick={() => setActiveTab('forgot')}
+                                    >
+                                        Voltar
+                                    </Button>
+                                </form>
+                            </TabsContent>
+
                             {/* Reset Password Tab */}
                             <TabsContent value="reset" className="mt-0">
                                 <CardTitle className="text-lg mb-2">Redefinir Senha</CardTitle>
                                 <CardDescription className="mb-4">
-                                    Insira o código recebido por e-mail e sua nova senha.
+                                    Defina sua nova senha. O código já foi verificado.
                                 </CardDescription>
                                 <form onSubmit={handleResetPassword} className="space-y-4">
-                                    <div className="space-y-2">
-                                        <Label htmlFor="reset-token">Código de Recuperação</Label>
-                                        <Input
-                                            id="reset-token"
-                                            placeholder="Cole o código recebido"
-                                            value={resetForm.token}
-                                            onChange={(e) =>
-                                                setResetForm({
-                                                    ...resetForm,
-                                                    token: e.target.value,
-                                                })
-                                            }
-                                        />
-                                    </div>
                                     <div className="space-y-2">
                                         <Label htmlFor="reset-password">Nova Senha</Label>
                                         <Input
