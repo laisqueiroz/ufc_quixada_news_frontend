@@ -1,24 +1,39 @@
-import { Link, useNavigate } from 'react-router-dom';
-import { useState } from 'react';
-import { Menu, X, Search, User, LogOut, Settings, Newspaper } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Link, useNavigate } from "react-router-dom";
+import { useState } from "react";
+import {
+  Menu,
+  X,
+  Search,
+  User,
+  LogOut,
+  Settings,
+  Newspaper,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { useAuth } from '@/contexts/AuthContext';
+} from "@/components/ui/dropdown-menu";
+import { useAuth } from "@/contexts/AuthContext";
 
 export function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const { user, isAuthenticated, logout, canPublish } = useAuth();
+  const {
+    user,
+    isAuthenticated,
+    logout,
+    canPublish,
+    isApproved,
+    mySolicitacao,
+  } = useAuth();
   const navigate = useNavigate();
 
   const handleLogout = async () => {
     await logout();
-    navigate('/');
+    navigate("/");
   };
 
   return (
@@ -67,7 +82,9 @@ export function Header() {
                       {user?.nome?.charAt(0).toUpperCase()}
                     </span>
                   </div>
-                  <span className="text-sm font-medium">{user?.nome?.split(' ')[0]}</span>
+                  <span className="text-sm font-medium">
+                    {user?.nome?.split(" ")[0]}
+                  </span>
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
@@ -76,10 +93,16 @@ export function Header() {
                   <p className="text-xs text-muted-foreground">{user?.email}</p>
                 </div>
                 <DropdownMenuSeparator />
-                {canPublish && (
+                {/* Dashboard: show when the user is allowed to publish OR has an approved solicitation.
+                    This covers the transient case where a solicitação is APROVADA but the user's `papel`
+                    hasn't been updated yet (backend update may be eventual). */}
+                {(canPublish || isApproved) && (
                   <>
                     <DropdownMenuItem asChild>
-                      <Link to="/dashboard" className="flex items-center gap-2 cursor-pointer">
+                      <Link
+                        to="/dashboard"
+                        className="flex items-center gap-2 cursor-pointer"
+                      >
                         <Settings className="h-4 w-4" />
                         Dashboard
                       </Link>
@@ -87,6 +110,25 @@ export function Header() {
                     <DropdownMenuSeparator />
                   </>
                 )}
+
+                {/* Always surface 'Visualizar solicitação' when the user has a
+                    pending/rejected solicitation, regardless of role (VISITANTE etc.). */}
+                {mySolicitacao &&
+                  (mySolicitacao.status === "PENDENTE" ||
+                    mySolicitacao.status === "REJEITADA") && (
+                    <>
+                      <DropdownMenuItem asChild>
+                        <Link
+                          to="/status"
+                          className="flex items-center gap-2 cursor-pointer"
+                        >
+                          <User className="h-4 w-4" />
+                          Visualizar solicitação
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                    </>
+                  )}
                 <DropdownMenuItem
                   onClick={handleLogout}
                   className="flex items-center gap-2 cursor-pointer text-destructive focus:text-destructive"
@@ -115,7 +157,11 @@ export function Header() {
           className="md:hidden"
           onClick={() => setIsMenuOpen(!isMenuOpen)}
         >
-          {isMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          {isMenuOpen ? (
+            <X className="h-5 w-5" />
+          ) : (
+            <Menu className="h-5 w-5" />
+          )}
         </Button>
       </div>
 
@@ -138,9 +184,9 @@ export function Header() {
               <Search className="h-4 w-4" />
               Buscar
             </Link>
-            
+
             <div className="border-t border-border my-2" />
-            
+
             {isAuthenticated ? (
               <>
                 <div className="px-3 py-2">
@@ -176,7 +222,10 @@ export function Header() {
                   </Link>
                 </Button>
                 <Button asChild className="flex-1">
-                  <Link to="/auth?tab=register" onClick={() => setIsMenuOpen(false)}>
+                  <Link
+                    to="/auth?tab=register"
+                    onClick={() => setIsMenuOpen(false)}
+                  >
                     Cadastrar
                   </Link>
                 </Button>

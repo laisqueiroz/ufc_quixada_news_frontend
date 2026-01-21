@@ -13,6 +13,9 @@ import DashboardLayout from "@/pages/dashboard/DashboardLayout";
 import DashboardOverview from "@/pages/dashboard/DashboardOverview";
 import ArticlesList from "@/pages/dashboard/ArticlesList";
 import ArticleEditor from "@/pages/dashboard/ArticleEditor";
+import SolicitacoesPage from "@/pages/dashboard/SolicitacoesPage";
+import UsuariosPage from "@/pages/dashboard/UsuariosPage";
+import StatusPage from "@/pages/StatusPage";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -44,7 +47,12 @@ const App = () => (
               <Route path="artigos" element={<ArticlesList />} />
               <Route path="artigos/novo" element={<ArticleEditor />} />
               <Route path="artigos/:id/editar" element={<ArticleEditor />} />
+              <Route path="solicitacoes" element={<SolicitacoesPage />} />
+              <Route path="usuarios" element={<UsuariosPage />} />
             </Route>
+
+            {/* User status / solicitation */}
+            <Route path="/status" element={<StatusPage />} />
 
             {/* 404 */}
             <Route path="*" element={<NotFound />} />
