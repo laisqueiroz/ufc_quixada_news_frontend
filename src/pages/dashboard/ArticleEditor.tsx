@@ -482,6 +482,13 @@ export default function ArticleEditor() {
   const [checkingSlug, setCheckingSlug] = useState(false);
   const slugCheckTimer = useRef<number | null>(null);
 
+  // cover (capa) UI state — support URL or upload (data URL)
+  const [capaSource, setCapaSource] = useState<"url" | "upload">("url");
+  const [localCapa, setLocalCapa] = useState<string | null>(null);
+  const capaFileInputRef = useRef<HTMLInputElement | null>(null);
+  // soft client-side guard (MB)
+  const CLIENT_UPLOAD_LIMIT_MB = 200;
+
   const [form, setForm] = useState<FormData>({
     titulo: "",
     resumo: "",
@@ -535,6 +542,19 @@ export default function ArticleEditor() {
             ...s,
           })),
         });
+
+        // mirror cover URL into local state so the UI shows preview/mode correctly
+        if (
+          article.capaUrl &&
+          typeof article.capaUrl === "string" &&
+          article.capaUrl.startsWith("data:")
+        ) {
+          setCapaSource("upload");
+          setLocalCapa(article.capaUrl);
+        } else {
+          setCapaSource("url");
+          setLocalCapa(article.capaUrl || null);
+        }
       }
     } catch (error) {
       toast({
@@ -615,6 +635,34 @@ export default function ArticleEditor() {
       }));
     },
     [setForm],
+  );
+
+  // handle cover file input: read as data URL and set into form.capaUrl
+  const onCapaFileChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = e.target.files;
+      if (!files || files.length === 0) return;
+      const f = files[0];
+      const maxBytes = CLIENT_UPLOAD_LIMIT_MB * 1024 * 1024;
+      if (f.size > maxBytes) {
+        toast({
+          title: `Arquivo muito grande (máx ${CLIENT_UPLOAD_LIMIT_MB} MB)`,
+          variant: "destructive",
+        });
+        return;
+      }
+      const fr = new FileReader();
+      fr.onload = (ev) => {
+        const result = ev?.target?.result as string | null | undefined;
+        if (result && result.startsWith("data:")) {
+          setLocalCapa(result);
+          setForm((prev) => ({ ...prev, capaUrl: result }));
+          setCapaSource("upload");
+        }
+      };
+      fr.readAsDataURL(f);
+    },
+    [setForm, toast],
   );
 
   const handleUpdateSection = useCallback(
@@ -815,13 +863,70 @@ export default function ArticleEditor() {
               {slugAvailable === false && (
                 <p className="text-sm text-red-600 mt-1">indisponível</p>
               )}
-              <Label htmlFor="capaUrl">URL da Capa</Label>
-              <Input
-                id="capaUrl"
-                value={form.capaUrl}
-                onChange={(e) => setForm({ ...form, capaUrl: e.target.value })}
-                placeholder="https://... (opcional)"
-              />
+              <Label htmlFor="capaUrl">Capa (URL ou upload)</Label>
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant={capaSource === "url" ? "default" : "outline"}
+                    onClick={() => setCapaSource("url")}
+                  >
+                    URL da Capa
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={capaSource === "upload" ? "default" : "outline"}
+                    onClick={() => setCapaSource("upload")}
+                  >
+                    Enviar capa
+                  </Button>
+                </div>
+                <div className="flex-1">
+                  {capaSource === "url" ? (
+                    <Input
+                      id="capaUrl"
+                      value={form.capaUrl}
+                      onChange={(e) => {
+                        setForm({ ...form, capaUrl: e.target.value });
+                        setLocalCapa(e.target.value || null);
+                      }}
+                      placeholder="https://... (opcional)"
+                    />
+                  ) : (
+                    <div className="space-y-2">
+                      <input
+                        data-testid="file-input-capa"
+                        ref={(el) => (capaFileInputRef.current = el)}
+                        type="file"
+                        accept="image/*"
+                        className="sr-only"
+                        onChange={onCapaFileChange}
+                      />
+                      <div className="flex gap-2 items-center">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => capaFileInputRef.current?.click()}
+                        >
+                          Escolher arquivo
+                        </Button>
+                        <span className="text-sm text-muted-foreground">
+                          {localCapa
+                            ? "Pré-visualização selecionada"
+                            : "Nenhuma imagem selecionada"}
+                        </span>
+                      </div>
+                      {localCapa && (
+                        <img
+                          src={localCapa}
+                          alt="Pré-visualização da capa"
+                          className="w-full max-h-48 object-contain rounded-md border bg-white/5"
+                        />
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
 
@@ -1108,6 +1213,62 @@ export default function ArticleEditor() {
                     Salvar Rascunho e Pré Visualizar
                   </Button>
                 </>
+              )}
+            </div>
+
+            {/* right-side actions (edit-only): explicit "Salvar" so user can persist edits without publishing */}
+            <div>
+              {isEditing && (
+                <Button
+                  variant="secondary"
+                  onClick={async () => {
+                    if (isSaving) return;
+                    if (!form.titulo || form.titulo.length < 3) {
+                      toast({
+                        title: "O título deve ter pelo menos 3 caracteres",
+                        variant: "destructive",
+                      });
+                      return;
+                    }
+
+                    setIsSaving(true);
+                    try {
+                      const data = {
+                        titulo: form.titulo,
+                        slug: form.slug || undefined,
+                        resumo: form.resumo || undefined,
+                        capaUrl: form.capaUrl || undefined,
+                        categoria: form.categoria,
+                        // preserve current published state when saving edits
+                        publicado: form.publicado,
+                        artigoSessoes: form.sessoes.map(
+                          (s: LocalSessao, i: number) => {
+                            const { _uid, ...rest } = s;
+                            return { ...rest, ordem: i };
+                          },
+                        ),
+                      };
+
+                      await api.updateArticle(Number(id), data);
+                      toast({ title: "Alterações salvas" });
+                    } catch (err) {
+                      toast({
+                        title: "Erro ao salvar alterações",
+                        variant: "destructive",
+                      });
+                    } finally {
+                      setIsSaving(false);
+                    }
+                  }}
+                  disabled={isSaving}
+                >
+                  {isSaving ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  ) : (
+                    <Save className="h-4 w-4 mr-2" />
+                  )}
+                  Salvar
+                </Button>
               )}
             </div>
           </div>
