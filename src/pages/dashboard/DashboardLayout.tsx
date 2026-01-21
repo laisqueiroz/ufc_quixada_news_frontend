@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { useState, useEffect } from "react";
+import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
   Newspaper,
@@ -11,40 +11,70 @@ import {
   Menu,
   X,
   ChevronRight,
-} from 'lucide-react';
-import { useAuth } from '@/contexts/AuthContext';
-import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
+} from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 const navItems = [
-  { icon: LayoutDashboard, label: 'Visão Geral', href: '/dashboard' },
-  { icon: Newspaper, label: 'Meus Artigos', href: '/dashboard/artigos' },
-  { icon: Plus, label: 'Novo Artigo', href: '/dashboard/artigos/novo' },
+  { icon: LayoutDashboard, label: "Visão Geral", href: "/dashboard" },
+  { icon: Newspaper, label: "Meus Artigos", href: "/dashboard/artigos" },
+  { icon: Plus, label: "Novo Artigo", href: "/dashboard/artigos/novo" },
 ];
 
 const adminItems = [
-  { icon: Users, label: 'Usuários', href: '/dashboard/usuarios' },
-  { icon: FileText, label: 'Solicitações', href: '/dashboard/solicitacoes' },
+  { icon: Users, label: "Usuários", href: "/dashboard/usuarios" },
+  { icon: FileText, label: "Solicitações", href: "/dashboard/solicitacoes" },
 ];
 
 export default function DashboardLayout() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const { user, logout, canPublish, isAdmin } = useAuth();
+  const {
+    user,
+    isLoading,
+    logout,
+    canPublish,
+    isAdmin,
+    isApproved,
+    isProfessor,
+    isTecnico,
+  } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (!canPublish) {
-      navigate('/');
+    // do not redirect while initial profile is loading — otherwise page reload
+    // causes a transient redirect for valid admins (reported bug).
+    if (isLoading) return;
+
+    // allow access if user is admin, approved, or has publishing privileges
+    // exception: allow rendering the `/status` page inside this layout so the
+    // status screen can reuse the dashboard Navbar and visual chrome.
+    if (
+      !isAdmin &&
+      !isApproved &&
+      !canPublish &&
+      location.pathname !== "/status"
+    ) {
+      navigate("/status");
     }
-  }, [canPublish, navigate]);
+  }, [isLoading, isAdmin, isApproved, canPublish, navigate, location.pathname]);
 
   const handleLogout = async () => {
     await logout();
-    navigate('/');
+    navigate("/");
   };
 
-  if (!canPublish) {
+  // allow `/status` to render even when the user is not approved so the
+  // page uses the same dashboard chrome (sidebar/header) required by the spec
+  // don't block initial render while the profile is loading
+  if (
+    !isLoading &&
+    !isAdmin &&
+    !isApproved &&
+    !canPublish &&
+    location.pathname !== "/status"
+  ) {
     return null;
   }
 
@@ -62,7 +92,11 @@ export default function DashboardLayout() {
             className="text-sidebar-foreground"
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
           >
-            {isSidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            {isSidebarOpen ? (
+              <X className="h-5 w-5" />
+            ) : (
+              <Menu className="h-5 w-5" />
+            )}
           </Button>
         </div>
       </header>
@@ -70,8 +104,8 @@ export default function DashboardLayout() {
       {/* Sidebar */}
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-40 w-64 bg-sidebar transform transition-transform duration-200 ease-in-out lg:translate-x-0',
-          isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
+          "fixed inset-y-0 left-0 z-40 w-64 bg-sidebar transform transition-transform duration-200 ease-in-out lg:translate-x-0",
+          isSidebarOpen ? "translate-x-0" : "-translate-x-full",
         )}
       >
         <div className="flex flex-col h-full">
@@ -119,10 +153,10 @@ export default function DashboardLayout() {
                   to={item.href}
                   onClick={() => setIsSidebarOpen(false)}
                   className={cn(
-                    'flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors',
+                    "flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors",
                     isActive
-                      ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                      : 'text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/50'
+                      ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                      : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/50",
                   )}
                 >
                   <item.icon className="h-4 w-4" />
@@ -145,10 +179,10 @@ export default function DashboardLayout() {
                       to={item.href}
                       onClick={() => setIsSidebarOpen(false)}
                       className={cn(
-                        'flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors',
+                        "flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors",
                         isActive
-                          ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                          : 'text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/50'
+                          ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                          : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/50",
                       )}
                     >
                       <item.icon className="h-4 w-4" />
@@ -157,6 +191,27 @@ export default function DashboardLayout() {
                     </Link>
                   );
                 })}
+              </>
+            )}
+
+            {(isProfessor || isTecnico) && (
+              <>
+                <p className="px-3 text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider mt-6 mb-2">
+                  Aprovadores
+                </p>
+                <Link
+                  to="/dashboard/solicitacoes"
+                  onClick={() => setIsSidebarOpen(false)}
+                  className={cn(
+                    "flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors",
+                    location.pathname === "/dashboard/solicitacoes"
+                      ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                      : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/50",
+                  )}
+                >
+                  <FileText className="h-4 w-4" />
+                  Solicitações
+                </Link>
               </>
             )}
           </nav>
