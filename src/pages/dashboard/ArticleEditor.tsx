@@ -1,4 +1,10 @@
-import { useState, useEffect, useRef } from "react";
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  useLayoutEffect,
+  useCallback,
+} from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
@@ -57,7 +63,11 @@ const categories: { value: Categoria; label: string }[] = [
   { value: "OUTROS", label: "Outros" },
 ];
 
-type LocalSessao = ArtigoSessao & { _uid?: string; id?: number };
+type LocalSessao = ArtigoSessao & {
+  _uid?: string;
+  id?: number;
+  _imgSource?: "url" | "upload";
+};
 
 interface FormData {
   titulo: string;
@@ -68,6 +78,397 @@ interface FormData {
   publicado: boolean;
   sessoes: LocalSessao[];
 }
+
+const SortableSection = React.memo(function SortableSection({
+  id,
+  sessao,
+  index,
+  onUpdate,
+  onRemove,
+}: {
+  id: string;
+  sessao: LocalSessao;
+  index: number;
+  onUpdate: (u: Partial<LocalSessao>) => void;
+  onRemove: () => void;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id });
+
+  // dev-only mount/unmount diagnostic to detect unintended remounts
+  useEffect(() => {
+    // keep minimal/noisy output; remove in production
+
+    console.debug("[SortableSection] mount", sessao._uid);
+    return () => console.debug("[SortableSection] unmount", sessao._uid);
+  }, [sessao._uid]);
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform) || undefined,
+    transition,
+    opacity: isDragging ? 0.6 : 1,
+  };
+
+  // local state to avoid losing focus on parent re-renders
+  const [localText, setLocalText] = useState(sessao.texto || "");
+  const [localImg, setLocalImg] = useState(sessao.imagemUrl || "");
+  const timerRef = useRef<number | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const textRef = useRef<HTMLTextAreaElement | null>(null);
+  const imageUrlRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    // only sync external changes into localText when the field is NOT focused
+    if (document.activeElement !== textRef.current) {
+      setLocalText(sessao.texto || "");
+    }
+  }, [sessao.texto]);
+
+  useEffect(() => {
+    // do not overwrite user edits while the image URL input is focused
+    if (document.activeElement !== imageUrlRef.current) {
+      setLocalImg(sessao.imagemUrl || "");
+    }
+  }, [sessao.imagemUrl]);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) window.clearTimeout(timerRef.current);
+    };
+  }, []);
+
+  // restore focus & caret synchronously if we recorded that the textarea was focused
+  useLayoutEffect(() => {
+    if (hadFocusRef.current && textRef.current) {
+      try {
+        textRef.current.focus();
+        if (caretRef.current?.start != null) {
+          textRef.current.setSelectionRange(
+            caretRef.current.start,
+            caretRef.current.end ?? caretRef.current.start,
+          );
+        }
+      } catch (err) {
+        // ignore if DOM selection APIs fail in the environment
+      }
+      hadFocusRef.current = false;
+    }
+  }, [localText]);
+
+  // catch-all: if focus was lost by some intermediate update, restore it on the next layout pass
+  useLayoutEffect(() => {
+    if (
+      hadFocusRef.current &&
+      textRef.current &&
+      document.activeElement !== textRef.current
+    ) {
+      try {
+        textRef.current.focus();
+        if (caretRef.current?.start != null) {
+          textRef.current.setSelectionRange(
+            caretRef.current.start,
+            caretRef.current.end ?? caretRef.current.start,
+          );
+        }
+      } catch (err) {
+        /* ignore */
+      }
+      hadFocusRef.current = false;
+    }
+  });
+
+  // expose the ref to the DOM node (fallback for non-React callers/tests)
+  useEffect(() => {
+    const el = document.querySelector(
+      `input[data-testid=\"file-input-${sessao._uid}\"]`,
+    ) as HTMLInputElement | null;
+    if (el) fileInputRef.current = el;
+
+    // dev-only: install a MutationObserver to catch layout-causing DOM mutations
+    if ((window as any).__ART_EDITOR_DEBUG) {
+      const obs = new MutationObserver((mutations) => {
+        mutations.forEach((m) => {
+          if (
+            m.type === "childList" &&
+            (m.addedNodes.length || m.removedNodes.length)
+          ) {
+            console.debug("[ArticleEditor][mutation]", {
+              uid: sessao._uid,
+              added: m.addedNodes.length,
+              removed: m.removedNodes.length,
+              scrollTop: document.scrollingElement?.scrollTop,
+            });
+          }
+        });
+      });
+      obs.observe(document.body, { childList: true, subtree: true });
+      return () => obs.disconnect();
+    }
+  }, [sessao._uid]);
+
+  const caretRef = useRef<{
+    start: number | null;
+    end: number | null;
+  } | null>(null);
+  const hadFocusRef = useRef(false);
+
+  const scheduleUpdate = (partial: Partial<LocalSessao>) => {
+    // remember whether the textarea is focused and caret position so we can restore after parent update
+    hadFocusRef.current = document.activeElement === textRef.current;
+    try {
+      caretRef.current = textRef.current
+        ? {
+            start: textRef.current.selectionStart,
+            end: textRef.current.selectionEnd,
+          }
+        : null;
+    } catch (err) {
+      caretRef.current = null;
+    }
+
+    if (timerRef.current) window.clearTimeout(timerRef.current);
+    // capture scroll when field is focused so we can restore after parent updates
+    const focused = hadFocusRef.current;
+    const scrollTop = focused && (document.scrollingElement?.scrollTop ?? 0);
+    timerRef.current = window.setTimeout(() => {
+      try {
+        if (focused && typeof scrollTop === "number") {
+          // small delay to allow layout to settle, then restore scroll and focus
+          onUpdate(partial);
+          requestAnimationFrame(() => {
+            try {
+              if (document.scrollingElement)
+                document.scrollingElement.scrollTop = scrollTop;
+              if (hadFocusRef.current && textRef.current) {
+                textRef.current.focus();
+                if (caretRef.current?.start != null) {
+                  textRef.current.setSelectionRange(
+                    caretRef.current.start,
+                    caretRef.current.end ?? caretRef.current.start,
+                  );
+                }
+              }
+            } catch (err) {
+              /* best-effort restore */
+            }
+          });
+          return;
+        }
+      } catch (err) {
+        // swallow
+      }
+      onUpdate(partial);
+    }, 250);
+  };
+
+  const flushUpdate = (partial: Partial<LocalSessao>) => {
+    hadFocusRef.current = document.activeElement === textRef.current;
+    try {
+      caretRef.current = textRef.current
+        ? {
+            start: textRef.current.selectionStart,
+            end: textRef.current.selectionEnd,
+          }
+        : null;
+    } catch (err) {
+      caretRef.current = null;
+    }
+
+    if (timerRef.current) {
+      window.clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    // flush synchronously but preserve scroll/focus if needed
+    const focused = hadFocusRef.current;
+    const scrollTop = focused && (document.scrollingElement?.scrollTop ?? 0);
+    onUpdate(partial);
+    if (focused) {
+      try {
+        if (document.scrollingElement && typeof scrollTop === "number")
+          document.scrollingElement.scrollTop = scrollTop;
+        if (textRef.current && hadFocusRef.current) {
+          textRef.current.focus();
+          if (caretRef.current?.start != null) {
+            textRef.current.setSelectionRange(
+              caretRef.current.start,
+              caretRef.current.end ?? caretRef.current.start,
+            );
+          }
+        }
+      } catch (err) {
+        /* best-effort */
+      }
+    }
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="flex items-start gap-3 p-4 rounded-lg border bg-muted/30"
+    >
+      <div {...attributes} {...listeners} className="cursor-move mt-2">
+        <GripVertical className="h-5 w-5 text-muted-foreground" />
+      </div>
+      <div className="flex-1 space-y-2">
+        <div className="flex items-center gap-2">
+          <span className="text-xs px-2 py-0.5 rounded bg-primary/10 text-primary font-medium">
+            {sessao.tipo}
+          </span>
+          <span className="text-xs text-muted-foreground">#{index + 1}</span>
+        </div>
+        {sessao.tipo === "IMAGEM" ? (
+          <div>
+            <div className="flex gap-2 mb-3">
+              <button
+                type="button"
+                className={cn(
+                  "px-2 py-1 rounded text-sm",
+                  sessao._imgSource === "url"
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted/20",
+                )}
+                onClick={() => {
+                  setLocalImg(sessao.imagemUrl || "");
+                  onUpdate({ _imgSource: "url" });
+                }}
+              >
+                Usar URL
+              </button>
+              <button
+                type="button"
+                className={cn(
+                  "px-2 py-1 rounded text-sm",
+                  sessao._imgSource === "upload"
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted/20",
+                )}
+                onClick={() => {
+                  onUpdate({ _imgSource: "upload" });
+                }}
+              >
+                Enviar imagem
+              </button>
+            </div>
+
+            {sessao._imgSource === "upload" ? (
+              <div className="space-y-2">
+                <input
+                  ref={(el) => {
+                    fileInputRef.current = el;
+                  }}
+                  data-testid={`file-input-${sessao._uid}`}
+                  type="file"
+                  accept="image/*"
+                  className="sr-only"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (!f) return;
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                      const result = String(reader.result || "");
+                      setLocalImg(result);
+                      // persist immediately (no debounce) so subsequent submit sees the data
+                      onUpdate({ imagemUrl: result });
+                    };
+                    reader.readAsDataURL(f);
+                  }}
+                />
+
+                <div className="flex items-center gap-3">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      if (fileInputRef.current) {
+                        fileInputRef.current.click();
+                        return;
+                      }
+                      const fallback = document.querySelector(
+                        `input[data-testid="file-input-${sessao._uid}"]`,
+                      ) as HTMLInputElement | null;
+                      fallback?.click();
+                    }}
+                  >
+                    Escolher arquivo
+                  </Button>
+
+                  {localImg ? (
+                    <div className="flex items-center gap-3">
+                      <img
+                        src={localImg}
+                        alt="Pré-visualização"
+                        className="h-24 w-24 object-contain rounded border"
+                      />
+                      <Button
+                        variant="ghost"
+                        onClick={() => {
+                          setLocalImg("");
+                          onUpdate({ imagemUrl: "" });
+                        }}
+                      >
+                        Remover
+                      </Button>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      Nenhuma imagem selecionada
+                    </p>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <Input
+                id={`sessao-${sessao._uid}-imagemUrl`}
+                name={`sessoes[${sessao._uid}].imagemUrl`}
+                ref={imageUrlRef}
+                placeholder="URL da imagem (ex: https://...)"
+                value={localImg}
+                onChange={(e) => {
+                  setLocalImg(e.target.value);
+                  scheduleUpdate({ imagemUrl: e.target.value });
+                }}
+                onBlur={() => flushUpdate({ imagemUrl: localImg })}
+              />
+            )}
+          </div>
+        ) : (
+          <Textarea
+            key={sessao._uid}
+            id={`sessao-${sessao._uid}-texto`}
+            name={`sessoes[${sessao._uid}].texto`}
+            ref={textRef}
+            placeholder={
+              sessao.tipo === "PARAGRAFO"
+                ? "Digite o parágrafo..."
+                : "Digite o tópico..."
+            }
+            value={localText}
+            onChange={(e) => {
+              setLocalText(e.target.value);
+              scheduleUpdate({ texto: e.target.value });
+            }}
+            onBlur={() => flushUpdate({ texto: localText })}
+            rows={sessao.tipo === "PARAGRAFO" ? 4 : 2}
+          />
+        )}
+      </div>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="text-destructive hover:text-destructive"
+        onClick={onRemove}
+      >
+        <Trash2 className="h-4 w-4" />
+      </Button>
+    </div>
+  );
+});
 
 export default function ArticleEditor() {
   const { id } = useParams<{ id: string }>();
@@ -91,6 +492,21 @@ export default function ArticleEditor() {
     sessoes: [],
   });
 
+  // Defensive: ensure every session has a stable _uid. This prevents accidental remounts
+  // if some code path inserts a session without an _uid (protects against focus loss).
+  useEffect(() => {
+    if (!form.sessoes || form.sessoes.length === 0) return;
+    const missing = form.sessoes.some((s) => !s._uid);
+    if (!missing) return;
+    setForm((prev) => ({
+      ...prev,
+      sessoes: prev.sessoes.map((s) =>
+        s._uid ? s : { ...s, _uid: makeUid() },
+      ),
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.sessoes.length]);
+
   useEffect(() => {
     if (isEditing) {
       loadArticle();
@@ -112,6 +528,10 @@ export default function ArticleEditor() {
           sessoes: (article.sessoes || []).map((s: LocalSessao, i: number) => ({
             _uid: s.id ? `db-${s.id}` : `${Date.now()}-${i}`,
             ordem: i,
+            _imgSource:
+              typeof s.imagemUrl === "string" && s.imagemUrl.startsWith("data:")
+                ? "upload"
+                : "url",
             ...s,
           })),
         });
@@ -132,19 +552,22 @@ export default function ArticleEditor() {
   const sensors = useSensors(useSensor(PointerSensor));
   const USE_DND = true;
 
-  const onDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    setForm((prev) => {
-      const oldIndex = prev.sessoes.findIndex((s) => s._uid === active.id);
-      const newIndex = prev.sessoes.findIndex((s) => s._uid === over.id);
-      if (oldIndex === -1 || newIndex === -1) return prev;
-      const next = arrayMove(prev.sessoes, oldIndex, newIndex).map(
-        (s: LocalSessao, i: number) => ({ ...s, ordem: i }),
-      );
-      return { ...prev, sessoes: next };
-    });
-  };
+  const onDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event;
+      if (!over || active.id === over.id) return;
+      setForm((prev) => {
+        const oldIndex = prev.sessoes.findIndex((s) => s._uid === active.id);
+        const newIndex = prev.sessoes.findIndex((s) => s._uid === over.id);
+        if (oldIndex === -1 || newIndex === -1) return prev;
+        const next = arrayMove(prev.sessoes, oldIndex, newIndex).map(
+          (s: LocalSessao, i: number) => ({ ...s, ordem: i }),
+        );
+        return { ...prev, sessoes: next };
+      });
+    },
+    [setForm],
+  );
 
   const handleAddSection = (tipo: "PARAGRAFO" | "TOPICO" | "IMAGEM") => {
     setForm((prev) => ({
@@ -157,163 +580,66 @@ export default function ArticleEditor() {
           tipo,
           texto: "",
           imagemUrl: "",
+          _imgSource: "url",
         } as LocalSessao,
       ],
     }));
   };
 
-  const updateSessao = (uid: string, updates: Partial<LocalSessao>) => {
-    setForm((prev) => ({
-      ...prev,
-      sessoes: prev.sessoes.map((s) =>
-        s._uid === uid ? { ...s, ...updates } : s,
-      ),
-    }));
-  };
+  const updateSessao = useCallback(
+    (uid: string, updates: Partial<LocalSessao>) => {
+      setForm((prev) => ({
+        ...prev,
+        sessoes: prev.sessoes.map((s) => {
+          if (s._uid !== uid) return s;
+          const merged = { ...s, ...updates } as LocalSessao;
+          // avoid returning a new object when nothing actually changed
+          const noChange =
+            (s.texto || "") === (merged.texto || "") &&
+            (s.imagemUrl || "") === (merged.imagemUrl || "") &&
+            (s._imgSource || "") === (merged._imgSource || "");
+          return noChange ? s : merged;
+        }),
+      }));
+    },
+    [setForm],
+  );
 
-  const removeSessao = (uid: string) => {
-    setForm((prev) => ({
-      ...prev,
-      sessoes: prev.sessoes
-        .filter((s) => s._uid !== uid)
-        .map((s, i) => ({ ...s, ordem: i })),
-    }));
-  };
+  const removeSessao = useCallback(
+    (uid: string) => {
+      setForm((prev) => ({
+        ...prev,
+        sessoes: prev.sessoes
+          .filter((s) => s._uid !== uid)
+          .map((s, i) => ({ ...s, ordem: i })),
+      }));
+    },
+    [setForm],
+  );
 
-  const handleUpdateSection = (
-    index: number,
-    updates: Partial<ArtigoSessao>,
-  ) => {
-    setForm((prev) => ({
-      ...prev,
-      sessoes: prev.sessoes.map((s, i) =>
-        i === index ? { ...s, ...updates } : s,
-      ),
-    }));
-  };
+  const handleUpdateSection = useCallback(
+    (index: number, updates: Partial<ArtigoSessao>) => {
+      setForm((prev) => ({
+        ...prev,
+        sessoes: prev.sessoes.map((s, i) =>
+          i === index ? { ...s, ...updates } : s,
+        ),
+      }));
+    },
+    [setForm],
+  );
 
-  const handleRemoveSection = (index: number) => {
-    setForm((prev) => ({
-      ...prev,
-      sessoes: prev.sessoes
-        .filter((_, i) => i !== index)
-        .map((s, i) => ({ ...s, ordem: i })),
-    }));
-  };
-
-  function SortableSection({
-    id,
-    sessao,
-    index,
-    onUpdate,
-    onRemove,
-  }: {
-    id: string;
-    sessao: LocalSessao;
-    index: number;
-    onUpdate: (u: Partial<LocalSessao>) => void;
-    onRemove: () => void;
-  }) {
-    const {
-      attributes,
-      listeners,
-      setNodeRef,
-      transform,
-      transition,
-      isDragging,
-    } = useSortable({ id });
-    const style: React.CSSProperties = {
-      transform: CSS.Transform.toString(transform) || undefined,
-      transition,
-      opacity: isDragging ? 0.6 : 1,
-    };
-
-    // local state to avoid losing focus on parent re-renders
-    const [localText, setLocalText] = useState(sessao.texto || "");
-    const [localImg, setLocalImg] = useState(sessao.imagemUrl || "");
-    const timerRef = useRef<number | null>(null);
-
-    useEffect(() => {
-      setLocalText(sessao.texto || "");
-    }, [sessao.texto]);
-
-    useEffect(() => {
-      setLocalImg(sessao.imagemUrl || "");
-    }, [sessao.imagemUrl]);
-
-    useEffect(() => {
-      return () => {
-        if (timerRef.current) window.clearTimeout(timerRef.current);
-      };
-    }, []);
-
-    const scheduleUpdate = (partial: Partial<LocalSessao>) => {
-      if (timerRef.current) window.clearTimeout(timerRef.current);
-      timerRef.current = window.setTimeout(() => onUpdate(partial), 250);
-    };
-
-    const flushUpdate = (partial: Partial<LocalSessao>) => {
-      if (timerRef.current) {
-        window.clearTimeout(timerRef.current);
-        timerRef.current = null;
-      }
-      onUpdate(partial);
-    };
-
-    return (
-      <div
-        ref={setNodeRef}
-        style={style}
-        className="flex items-start gap-3 p-4 rounded-lg border bg-muted/30"
-      >
-        <div {...attributes} {...listeners} className="cursor-move mt-2">
-          <GripVertical className="h-5 w-5 text-muted-foreground" />
-        </div>
-        <div className="flex-1 space-y-2">
-          <div className="flex items-center gap-2">
-            <span className="text-xs px-2 py-0.5 rounded bg-primary/10 text-primary font-medium">
-              {sessao.tipo}
-            </span>
-            <span className="text-xs text-muted-foreground">#{index + 1}</span>
-          </div>
-          {sessao.tipo === "IMAGEM" ? (
-            <Input
-              placeholder="URL da imagem (ex: https://...)"
-              value={localImg}
-              onChange={(e) => {
-                setLocalImg(e.target.value);
-                scheduleUpdate({ imagemUrl: e.target.value });
-              }}
-              onBlur={() => flushUpdate({ imagemUrl: localImg })}
-            />
-          ) : (
-            <Textarea
-              placeholder={
-                sessao.tipo === "PARAGRAFO"
-                  ? "Digite o parágrafo..."
-                  : "Digite o tópico..."
-              }
-              value={localText}
-              onChange={(e) => {
-                setLocalText(e.target.value);
-                scheduleUpdate({ texto: e.target.value });
-              }}
-              onBlur={() => flushUpdate({ texto: localText })}
-              rows={sessao.tipo === "PARAGRAFO" ? 4 : 2}
-            />
-          )}
-        </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="text-destructive hover:text-destructive"
-          onClick={onRemove}
-        >
-          <Trash2 className="h-4 w-4" />
-        </Button>
-      </div>
-    );
-  }
+  const handleRemoveSection = useCallback(
+    (index: number) => {
+      setForm((prev) => ({
+        ...prev,
+        sessoes: prev.sessoes
+          .filter((_, i) => i !== index)
+          .map((s, i) => ({ ...s, ordem: i })),
+      }));
+    },
+    [setForm],
+  );
 
   const checkSlugNow = async (force = false) => {
     if (!form.slug || form.slug.trim() === "") {
