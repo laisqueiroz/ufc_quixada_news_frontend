@@ -1063,67 +1063,6 @@ export default function ArticleEditor() {
                       Publicar
                     </Button>
                   )}
-
-                  <Button
-                    variant="ghost"
-                    onClick={async () => {
-                      if (isSaving) return;
-
-                      if (!form.titulo || form.titulo.length < 3) {
-                        toast({
-                          title:
-                            "Salve o artigo antes de pré-visualizar (título curto)",
-                          variant: "destructive",
-                        });
-                        return;
-                      }
-
-                      // if slug chosen and known to be unavailable, warn
-                      if (form.slug && slugAvailable === false) {
-                        toast({
-                          title:
-                            "Slug em uso. Escolha um slug diferente antes de pré-visualizar",
-                          variant: "destructive",
-                        });
-                        return;
-                      }
-
-                      setIsSaving(true);
-                      try {
-                        const data = {
-                          titulo: form.titulo,
-                          slug: form.slug || undefined,
-                          resumo: form.resumo || undefined,
-                          capaUrl: form.capaUrl || undefined,
-                          categoria: form.categoria,
-                          publicado: false,
-                          artigoSessoes: form.sessoes.map((s) => {
-                            const { _uid, ...rest } = s;
-                            return rest;
-                          }),
-                        };
-
-                        // save current edits as draft before preview
-                        await api.updateArticle(Number(id), data);
-                        toast({ title: "Rascunho salvo para pré-visualizar" });
-                        // ensure we have latest slug (may have been normalized)
-                        const updated = await api.getManageArticle(Number(id));
-                        navigate(`/dashboard/artigos/${updated.id}/editar`);
-                        const to = `/noticias/${updated.slug}?preview=true`;
-                        window.open(to, "_blank");
-                        return;
-                      } catch (err) {
-                        toast({
-                          title: "Erro ao salvar rascunho para pré-visualizar",
-                          variant: "destructive",
-                        });
-                      } finally {
-                        setIsSaving(false);
-                      }
-                    }}
-                  >
-                    Pré-visualizar
-                  </Button>
                 </>
               ) : (
                 <>
